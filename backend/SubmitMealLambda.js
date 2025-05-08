@@ -1,13 +1,12 @@
-const AWS = require('aws-sdk');
 const https = require('https');
+const AWS = require('aws-sdk');
 
 const dynamodb = new AWS.DynamoDB.DocumentClient();
-const comprehend = new AWS.Comprehend();
-const transcribe = new AWS.TranscribeService();
 
 const USDA_API_KEY = process.env.USDA_API_KEY;
-const FOOD_CACHE_TABLE = 'FoodCache';
 const FOOD_RECORDS_TABLE = 'FoodRecords';
+
+const PARSE_API_URL = 'https://ms4dunz31k.execute-api.us-west-2.amazonaws.com/stage8/parseMeal';
 
 exports.handler = async (event) => {
     try {
@@ -22,33 +21,31 @@ exports.handler = async (event) => {
             };
         }
 
-        const comprehendParams = {
-            Text: inputText,
-            LanguageCode: 'en'
-        };
+        const parseResponse = await httpPostJson(PARSE_API_URL, {
+            mealDescription: inputText
+        });
 
-        const comprehendResult = await comprehend.detectEntities(comprehendParams).promise();
-        const extractedFoods = comprehendResult.Entities
-            .filter(entity => entity.Type === 'OTHER')
-            .map(entity => entity.Text);
-
-        if (extractedFoods.length === 0) {
+        const extractedFoods = parseResponse.parsedFoods;
+        if (!Array.isArray(extractedFoods) || extractedFoods.length === 0) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ error: 'No food items detected.' })
+                body: JSON.stringify({ error: 'No food items parsed.' })
             };
         }
 
         const foodsInfo = [];
-        for (const food of extractedFoods) {
-            const searchUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(food)}&api_key=${USDA_API_KEY}`;
+        for (const item of extractedFoods) {
+            const foodName = item.food;
+            const searchUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(foodName)}&api_key=${USDA_API_KEY}`;
 
             const usdaData = await httpGet(searchUrl);
             if (usdaData.foods && usdaData.foods.length > 0) {
                 const topMatch = usdaData.foods[0];
                 foodsInfo.push({
                     food: topMatch.description,
-                    fdcId: topMatch.fdcId
+                    fdcId: topMatch.fdcId,
+                    quantity: item.quantity,
+                    unit: item.unit
                 });
             }
         }
@@ -66,18 +63,27 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 200,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': true
+            },
             body: JSON.stringify({
-                message: 'Meal recorded successfully.',
-                parsedFoods: foodsInfo
+              message: 'Meal recorded successfully.',
+              userId: userId,
+              parsedFoods: foodsInfo
             })
-        };
+          };        
 
     } catch (error) {
         console.error('Error:', error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: 'Internal server error.' })
-        };
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Credentials': true
+            },
+            body: JSON.stringify({ error: 'Internal server error' })
+          };
     }
 };
 
@@ -85,17 +91,47 @@ function httpGet(url) {
     return new Promise((resolve, reject) => {
         https.get(url, (res) => {
             let body = '';
-            res.on('data', (chunk) => { body += chunk; });
+            res.on('data', chunk => body += chunk);
             res.on('end', () => {
                 try {
-                    const json = JSON.parse(body);
-                    resolve(json);
+                    resolve(JSON.parse(body));
                 } catch (err) {
                     reject(err);
                 }
             });
-        }).on('error', (e) => {
-            reject(e);
+        }).on('error', reject);
+    });
+}
+
+function httpPostJson(url, data) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify(data);
+        const parsedUrl = new URL(url);
+
+        const options = {
+            hostname: parsedUrl.hostname,
+            path: parsedUrl.pathname,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', chunk => body += chunk);
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(body));
+                } catch (err) {
+                    reject(err);
+                }
+            });
         });
+
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
     });
 }
