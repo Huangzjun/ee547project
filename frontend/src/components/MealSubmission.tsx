@@ -14,7 +14,7 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
   const [error, setError] = useState<string | null>(null);
   const [parsedFoods, setParsedFoods] = useState<any[]>([]);
   const [nutritionData, setNutritionData] = useState<any>(null);
-  const [step, setStep] = useState<'input' | 'confirm'>('input');
+  const [step, setStep] = useState<'input' | 'foodList' | 'nutrition'>('input');
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
 
@@ -81,7 +81,7 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
     try {
       const submitResponse = await api.submitMeal(userId, mealDescription);
       setParsedFoods(submitResponse.parsedFoods);
-      setStep('confirm');
+      setStep('foodList');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submission failed, please try again');
     } finally {
@@ -89,16 +89,14 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
     }
   };
 
-  const handleFinalSubmit = async () => {
+  const handleFoodListConfirm = async () => {
     setLoading(true);
     setError(null);
 
     try {
       const nutritionResponse = await api.getNutrition(userId, parsedFoods);
       setNutritionData(nutritionResponse);
-      setMealDescription('');
-      setParsedFoods([]);
-      setStep('input');
+      setStep('nutrition');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get nutrition information');
     } finally {
@@ -130,16 +128,16 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
           placeholder="Enter your meal description (e.g., 'I had a bowl of rice and two eggs')"
           variant="outlined"
           margin="normal"
-          disabled={step === 'confirm'}
+          disabled={step !== 'input'}
           sx={{
             '& .MuiOutlinedInput-root': {
-              paddingRight: '60px' // Add padding to make room for the button
+              paddingRight: '60px'
             }
           }}
         />
         <IconButton
           onClick={toggleListening}
-          disabled={step === 'confirm'}
+          disabled={step !== 'input'}
           sx={{
             position: 'absolute',
             right: 12,
@@ -153,14 +151,14 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
             borderRadius: '8px',
             width: '40px',
             height: '40px',
-            marginTop: '8px' // Adjust to align with the text field
+            marginTop: '8px'
           }}
         >
           {isListening ? <MicOffIcon /> : <MicIcon />}
         </IconButton>
       </Box>
 
-      {step === 'input' ? (
+      {step === 'input' && (
         <Button
           variant="contained"
           color="primary"
@@ -170,44 +168,68 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
         >
           {loading ? <CircularProgress size={24} /> : 'Confirm Description'}
         </Button>
-      ) : (
+      )}
+
+      {step !== 'input' && (
         <>
           <List sx={{ mt: 2, mb: 2, bgcolor: 'background.paper' }}>
             {parsedFoods.map((food, index) => (
               <React.Fragment key={index}>
-                <ListItem>
+                <ListItem sx={step === 'nutrition' && parsedFoods.length === 1 ? { backgroundColor: 'primary.light' } : {}}>
                   <ListItemText
                     primary={`${food.quantity} ${food.unit || ''} ${food.food}`}
-                    secondary={nutritionData?.foodDetails[index]?.labelNutrients ? 
-                      `Calories: ${nutritionData.foodDetails[index].labelNutrients.calories} | 
+                    secondary={step === 'nutrition' && nutritionData?.foodDetails[index]?.labelNutrients ? 
+                      `Calories: ${nutritionData.foodDetails[index].labelNutrients.calories} kcal | 
                        Protein: ${nutritionData.foodDetails[index].labelNutrients.protein}g | 
                        Fat: ${nutritionData.foodDetails[index].labelNutrients.fat}g | 
                        Carbs: ${nutritionData.foodDetails[index].labelNutrients.carbohydrates}g` : 
-                      'Waiting for nutrition analysis...'}
+                      undefined}
+                    primaryTypographyProps={step === 'nutrition' && parsedFoods.length === 1 ? { fontWeight: 'bold' } : {}}
+                    secondaryTypographyProps={step === 'nutrition' && parsedFoods.length === 1 ? { fontWeight: 'bold' } : {}}
                   />
                 </ListItem>
                 {index < parsedFoods.length - 1 && <Divider />}
               </React.Fragment>
             ))}
+            {step === 'nutrition' && nutritionData && parsedFoods.length > 1 && (
+              <>
+                <Divider />
+                <ListItem sx={{ backgroundColor: 'primary.light' }}>
+                  <ListItemText
+                    primary="Total"
+                    secondary={`Calories: ${nutritionData.summary.macros.calories} kcal | 
+                               Protein: ${nutritionData.summary.macros.protein_g}g | 
+                               Fat: ${nutritionData.summary.macros.fat_g}g | 
+                               Carbs: ${nutritionData.summary.macros.carbohydrates_g}g`}
+                    primaryTypographyProps={{ fontWeight: 'bold' }}
+                    secondaryTypographyProps={{ fontWeight: 'bold' }}
+                  />
+                </ListItem>
+              </>
+            )}
           </List>
 
           <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleFinalSubmit}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Confirm Food'}
-            </Button>
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={handleReset}
-              disabled={loading}
-            >
-              Start Over
-            </Button>
+            {step === 'foodList' && (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleFoodListConfirm}
+                disabled={loading}
+              >
+                {loading ? <CircularProgress size={24} /> : 'Confirm Food List'}
+              </Button>
+            )}
+            {step === 'nutrition' && (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleReset}
+                disabled={loading}
+              >
+                Start Over
+              </Button>
+            )}
           </Box>
         </>
       )}
@@ -216,37 +238,6 @@ export const MealSubmission: React.FC<MealSubmissionProps> = ({ userId }) => {
         <Alert severity="error" sx={{ mt: 2 }}>
           {error}
         </Alert>
-      )}
-
-      {nutritionData && step === 'input' && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Nutrition Analysis Results
-          </Typography>
-          
-          <TableContainer component={Paper} sx={{ mt: 2 }}>
-            <Table>
-              <TableBody>
-                <TableRow>
-                  <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>Protein</TableCell>
-                  <TableCell align="right">{nutritionData.summary.macros.protein_g}g</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>Fat</TableCell>
-                  <TableCell align="right">{nutritionData.summary.macros.fat_g}g</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>Carbohydrates</TableCell>
-                  <TableCell align="right">{nutritionData.summary.macros.carbohydrates_g}g</TableCell>
-                </TableRow>
-                <TableRow sx={{ backgroundColor: 'primary.light' }}>
-                  <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>Total Calories</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>{nutritionData.summary.macros.calories} kcal</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
       )}
     </Box>
   );

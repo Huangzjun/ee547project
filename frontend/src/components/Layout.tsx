@@ -92,7 +92,7 @@ const Layout = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Food Logging System
+            Navigation
           </Typography>
           <Button
             color="inherit"

@@ -1,6 +1,45 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'https://ms4dunz31k.execute-api.us-west-2.amazonaws.com';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ms4dunz31k.execute-api.us-west-2.amazonaws.com';
+
+// 创建 axios 实例
+const axiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  // 添加跨域请求配置
+  withCredentials: false,
+});
+
+// 添加请求拦截器
+axiosInstance.interceptors.request.use(
+  (config) => {
+    console.log('Request URL:', config.url);
+    console.log('Request Headers:', config.headers);
+    return config;
+  },
+  (error) => {
+    console.error('Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// 添加响应拦截器
+axiosInstance.interceptors.response.use(
+  (response) => {
+    console.log('Response Headers:', response.headers);
+    return response;
+  },
+  (error) => {
+    console.error('Response Error:', error);
+    if (error.response) {
+      console.error('Error Status:', error.response.status);
+      console.error('Error Headers:', error.response.headers);
+    }
+    return Promise.reject(error);
+  }
+);
 
 interface ParsedFood {
   food: string;
@@ -80,7 +119,7 @@ interface GetProfileResponse {
 export const api = {
   // 提交膳食描述
   submitMeal: async (userId: string, mealDescription: string): Promise<SubmitMealResponse> => {
-    const response = await axios.post(`${API_BASE_URL}/stage8/submitMeal`, {
+    const response = await axiosInstance.post(`/stage1/submitMeal`, {
       userId,
       mealDescription,
     });
@@ -89,7 +128,7 @@ export const api = {
 
   // 获取营养分析
   getNutrition: async (userId: string, parsedFoods: ParsedFood[]): Promise<NutritionResponse> => {
-    const response = await axios.post(`${API_BASE_URL}/stage8/nutrition`, {
+    const response = await axiosInstance.post(`/stage1/nutrition`, {
       userId,
       parsedFoods,
     });
@@ -98,7 +137,7 @@ export const api = {
 
   // 获取历史分析记录
   getAnalyze: async (userId: string): Promise<AnalyzeResponse> => {
-    const response = await axios.get(`${API_BASE_URL}/stage1/analyze`, {
+    const response = await axiosInstance.get(`/stage1/analyze`, {
       params: { userId },
     });
     return response.data;
@@ -106,7 +145,7 @@ export const api = {
 
   // 更新个人资料
   updateProfile: async (userId: string, profile: Profile): Promise<UpdateProfileResponse> => {
-    const response = await axios.put(`${API_BASE_URL}/stage8/profile`, {
+    const response = await axiosInstance.put(`/stage1/profile`, {
       userId,
       profile,
     });
@@ -115,7 +154,7 @@ export const api = {
 
   // 获取用户资料
   getProfile: async (userId: string): Promise<GetProfileResponse> => {
-    const response = await axios.get(`${API_BASE_URL}/stage8/profile`, {
+    const response = await axiosInstance.get(`/stage1/profile`, {
       params: { userId },
     });
     return response.data;
